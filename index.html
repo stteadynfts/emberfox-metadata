@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Emberfox — Free Mint (BSC)</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #120605; color: #ffe9d6; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; min-height: 100vh; display: flex; flex-direction: column; align-items: center; padding: 32px 16px; }
+  .card { max-width: 560px; width: 100%; background: #1d0a07; border: 1px solid #57200f; border-radius: 20px; padding: 28px 24px; text-align: center; box-shadow: 0 0 60px rgba(255, 90, 0, 0.15); }
+  img.hero { width: 100%; max-width: 420px; border-radius: 14px; border: 1px solid #57200f; }
+  h1 { font-size: 34px; margin: 18px 0 4px; letter-spacing: 0.5px; }
+  h1 span { color: #ff7a1a; }
+  p.sub { color: #d8a986; font-size: 15px; line-height: 1.5; }
+  .stats { display: flex; gap: 10px; margin: 20px 0; }
+  .stat { flex: 1; background: #2a0e08; border: 1px solid #57200f; border-radius: 12px; padding: 12px 6px; }
+  .stat .v { font-size: 20px; font-weight: 700; color: #ffb347; }
+  .stat .l { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #b98a68; margin-top: 4px; }
+  #countdown { font-size: 15px; color: #ffb347; margin-bottom: 6px; }
+  button { width: 100%; padding: 15px; font-size: 17px; font-weight: 700; border: none; border-radius: 12px; cursor: pointer; margin-top: 10px; }
+  #connectBtn { background: #ff7a1a; color: #1d0a07; }
+  #connectBtn:disabled { opacity: 0.6; cursor: default; }
+  #mintBtn { background: #ffd23f; color: #1d0a07; display: none; }
+  #mintBtn:disabled { opacity: 0.55; cursor: default; }
+  #status { margin-top: 14px; font-size: 14px; line-height: 1.5; min-height: 21px; word-break: break-word; }
+  #status a { color: #ffb347; }
+  .links { margin-top: 18px; font-size: 13px; color: #b98a68; line-height: 1.9; }
+  .links a { color: #ff9a4d; }
+  .tiers { margin-top: 16px; font-size: 13px; color: #d8a986; line-height: 1.7; }
+  .fine { margin-top: 18px; font-size: 12px; color: #8a6a55; line-height: 1.6; }
+</style>
+</head>
+<body>
+<div class="card">
+  <img class="hero" src="https://raw.githubusercontent.com/stteadynfts/emberfox-metadata/main/images/ember.webp" alt="Emberfox">
+  <h1>EMBER<span>FOX</span></h1>
+  <p class="sub">Ember foxes born from fire. 8,888 foxes across 4 tiers: Smoke, Ember, Flame, Inferno. Fire meets the sea.</p>
+
+  <div class="stats">
+    <div class="stat"><div class="v" id="minted">…</div><div class="l">Minted</div></div>
+    <div class="stat"><div class="v">8,888</div><div class="l">Supply</div></div>
+    <div class="stat"><div class="v" id="price">…</div><div class="l">Price</div></div>
+  </div>
+
+  <div id="countdown">Free mint ends in …</div>
+
+  <button id="connectBtn">Connect Wallet (BSC)</button>
+  <button id="mintBtn">Mint 1 Free Emberfox</button>
+  <div id="status"></div>
+
+  <div class="tiers">
+    Smoke #1–4,444 &nbsp;·&nbsp; Ember #4,445–7,110<br>
+    Flame #7,111–8,443 &nbsp;·&nbsp; Inferno #8,444–8,888<br>
+    Free 1 per wallet, then $0.20 in BNB, max 2 per wallet.
+  </div>
+
+  <div class="links">
+    Contract: <a href="https://bscscan.com/address/0x039b3EF0B895AcA841DA734103605bCEEC5Da386" target="_blank" rel="noopener">0x039b…Da386</a><br>
+    <a href="https://opensea.io/collection/emberfox-481201143" target="_blank" rel="noopener">OpenSea collection</a> &nbsp;·&nbsp;
+    <a href="https://bscscan.com/address/0x00005EA00Ac477B1030CE78506496e8C2dE24bf5" target="_blank" rel="noopener">SeaDrop</a>
+  </div>
+
+  <p class="fine">Minting happens directly on the SeaDrop contract on BNB Smart Chain (chain 56). You only pay gas. This page never asks for your seed phrase. Free phase: 13 Nov 19:53 WIB – 14 Nov 19:53 WIB.</p>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/ethers@6.13.0/dist/ethers.umd.min.js"></script>
+<script>
+const NFT = "0x039b3EF0B895AcA841DA734103605bCEEC5Da386";
+const SEADROP = "0x00005EA00Ac477B1030CE78506496e8C2dE24bf5";
+const OS_FEE = "0x0000a26b00c1F0DF003000390027140000fAa719";
+const RPC = "https://bsc-dataseed1.bnbchain.org";
+const CHAIN_ID = 56;
+
+const SEADROP_ABI = [
+  "function getPublicDrop(address) view returns (tuple(uint80 mintPrice,uint48 startTime,uint48 endTime,uint16 maxTotalMintableByWallet,uint16 feeBps,bool restrictFeeRecipients))",
+  "function mintPublic(address,address,address,uint256) payable"
+];
+const NFT_ABI = [
+  "function totalSupply() view returns (uint256)",
+  "function balanceOf(address) view returns (uint256)"
+];
+
+const $ = (id) => document.getElementById(id);
+const statusEl = $("status");
+let drop = null;
+let provider = null;
+let signer = null;
+let account = null;
+
+function setStatus(html) { statusEl.innerHTML = html; }
+
+async function refresh() {
+  try {
+    provider = provider || new ethers.JsonRpcProvider(RPC);
+    const sd = new ethers.Contract(SEADROP, SEADROP_ABI, provider);
+    const nft = new ethers.Contract(NFT, NFT_ABI, provider);
+    drop = await sd.getPublicDrop(NFT);
+    const supply = await nft.totalSupply();
+    $("minted").textContent = supply.toString();
+    const price = drop.mintPrice;
+    $("price").textContent = price === 0n ? "FREE" : ethers.formatEther(price) + " BNB";
+    $("mintBtn").textContent = price === 0n ? "Mint 1 Free Emberfox" : "Mint 1 Emberfox (" + ethers.formatEther(price) + " BNB)";
+    tickCountdown();
+  } catch (e) {
+    $("minted").textContent = "?";
+    $("price").textContent = "?";
+  }
+}
+
+function tickCountdown() {
+  if (!drop) return;
+  const end = Number(drop.endTime) * 1000;
+  const now = Date.now();
+  const el = $("countdown");
+  if (drop.mintPrice === 0n && end > now) {
+    const s = Math.floor((end - now) / 1000);
+    const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+    el.textContent = "Free mint ends in " + h + "h " + m + "m " + sec + "s";
+  } else if (drop.mintPrice === 0n) {
+    el.textContent = "Free phase ended — paid phase is live.";
+  } else {
+    el.textContent = "Paid phase live — $0.20 in BNB, max 2 per wallet.";
+  }
+}
+setInterval(tickCountdown, 1000);
+setInterval(refresh, 20000);
+
+$("connectBtn").addEventListener("click", async () => {
+  try {
+    if (!window.ethereum) { setStatus("No wallet found. Install MetaMask or Rabby and try again."); return; }
+    $("connectBtn").disabled = true;
+    $("connectBtn").textContent = "Connecting…";
+    const accounts = await window.ethereum.request({ method: "eth_requestAccounts" });
+    account = accounts[0];
+    const chainIdHex = await window.ethereum.request({ method: "eth_chainId" });
+    if (parseInt(chainIdHex, 16) !== CHAIN_ID) {
+      try {
+        await window.ethereum.request({ method: "wallet_switchEthereumChain", params: [{ chainId: "0x38" }] });
+      } catch (e) {
+        await window.ethereum.request({ method: "wallet_addEthereumChain", params: [{
+          chainId: "0x38", chainName: "BNB Smart Chain",
+          nativeCurrency: { name: "BNB", symbol: "BNB", decimals: 18 },
+          rpcUrls: [RPC], blockExplorerUrls: ["https://bscscan.com"]
+        }] });
+      }
+    }
+    const bp = new ethers.BrowserProvider(window.ethereum);
+    signer = await bp.getSigner();
+    $("connectBtn").textContent = "Connected: " + account.slice(0, 6) + "…" + account.slice(-4);
+    $("mintBtn").style.display = "block";
+    setStatus("Wallet connected on BSC. You can mint now.");
+    await refresh();
+    const nft = new ethers.Contract(NFT, NFT_ABI, provider);
+    const held = await nft.balanceOf(account);
+    if (drop && held >= BigInt(drop.maxTotalMintableByWallet)) {
+      $("mintBtn").disabled = true;
+      setStatus("This wallet already minted its free Emberfox (" + held.toString() + " held, max " + drop.maxTotalMintableByWallet.toString() + ").");
+    }
+  } catch (e) {
+    $("connectBtn").disabled = false;
+    $("connectBtn").textContent = "Connect Wallet (BSC)";
+    setStatus("Connection failed: " + (e && e.message ? e.message : e));
+  }
+});
+
+$("mintBtn").addEventListener("click", async () => {
+  try {
+    if (!signer || !account || !drop) { setStatus("Connect your wallet first."); return; }
+    $("mintBtn").disabled = true;
+    $("mintBtn").textContent = "Minting…";
+    setStatus("Confirm the transaction in your wallet (gas only, mint is free).");
+    const sd = new ethers.Contract(SEADROP, SEADROP_ABI, signer);
+    const price = drop.mintPrice;
+    await sd.mintPublic.staticCall(NFT, OS_FEE, account, 1, { value: price });
+    const tx = await sd.mintPublic(NFT, OS_FEE, account, 1, { value: price });
+    setStatus("Transaction sent: <a href=\"https://bscscan.com/tx/" + tx.hash + "\" target=\"_blank\" rel=\"noopener\">" + tx.hash + "</a> — waiting for confirmation…");
+    const rc = await tx.wait();
+    if (rc.status === 1) {
+      setStatus("Minted! <a href=\"https://bscscan.com/tx/" + tx.hash + "\" target=\"_blank\" rel=\"noopener\">View on BscScan</a> — your Emberfox is on its way. Check OpenSea in a few minutes.");
+      $("mintBtn").textContent = "Minted ✓";
+    } else {
+      setStatus("Transaction failed on-chain. See BscScan for details.");
+      $("mintBtn").disabled = false;
+      $("mintBtn").textContent = "Mint 1 Free Emberfox";
+    }
+    await refresh();
+  } catch (e) {
+    $("mintBtn").disabled = false;
+    $("mintBtn").textContent = "Mint 1 Free Emberfox";
+    const msg = (e && e.message) ? e.message : String(e);
+    setStatus("Mint failed: " + msg.slice(0, 300));
+  }
+});
+
+refresh();
+</script>
+</body>
+</html>
